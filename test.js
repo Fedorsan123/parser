@@ -123,5 +123,5 @@ async function fetchAndSend() {
   // Первый замер сразу при старте
   await fetchAndSend();
   // Расписание: каждые 10 минут
-  cron.schedule('*/10 * * * *', fetchAndSend);
+  cron.schedule('*/5 * * * *', fetchAndSend);
 })();
