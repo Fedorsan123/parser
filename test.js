@@ -17,10 +17,17 @@ let browser, page;
 
 async function initBrowser() {
   browser = await puppeteer.launch({
-    headless: true,    // показываем окно для наглядности
-    slowMo: 50,
-    defaultViewport: null,
-    args: ['--start-maximized', '--no-sandbox']
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',  // не грузить /dev/shm
+      '--single-process',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-background-timer-throttling'
+    ],
+    defaultViewport: { width: 800, height: 600 },
   });
   page = await browser.newPage();
   await page.setUserAgent('GymParser/1.0');
