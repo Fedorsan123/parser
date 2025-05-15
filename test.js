@@ -111,5 +111,5 @@ async function fetchAndSave() {
 
 (async () => {
   await fetchAndSave();
-  cron.schedule("*/10 * * * *", fetchAndSave);
+  cron.schedule("0 */10 * * * *", fetchAndSave);
 })();
