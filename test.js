@@ -14,41 +14,37 @@ const URL             = "https://academyffc.com/raspisanie/";
 const FRAME_ID        = "personal_widget_frame_v7u";
 const CSV_PATH        = path.join(__dirname, "data.csv");
 const MAX_ATTEMPTS    = 6;
-const RELOAD_INTERVAL = 2;      // после 2-й попытки — перезагрузить
-const WAIT_MS         = 10000;  // ждать 10 секунд
+const RELOAD_INTERVAL = 2;      // после каждой 2-й попытки — перезагрузить
+const WAIT_MS         = 10000;  // ждать 10 секунд между попытками
 // ================================
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function initBrowser() {
-  return await puppeteer.launch({
+  const browser = await puppeteer.launch({
     headless: true,
     slowMo: 50,
     defaultViewport: null,
     args: ["--start-maximized","--no-sandbox"]
-  }).then(browser => 
-    browser.newPage()
-      .then(page => {
-        page.setUserAgent("GymParser/1.0");
-        return { browser, page };
-      })
-  );
+  });
+  const page = await browser.newPage();
+  await page.setUserAgent("GymParser/1.0");
+  return { browser, page };
 }
 
 function appendToCsv(timeStr, count) {
-  // если нет — создаём с заголовком
   if (!fs.existsSync(CSV_PATH)) {
-  fs.writeFileSync(CSV_PATH, "Time;Count\n", "utf8");
-}
+    fs.writeFileSync(CSV_PATH, "Time;Count\n", "utf8");
+  }
   fs.appendFileSync(CSV_PATH, `${timeStr};${count}\n`, "utf8");
   console.log(`→ CSV updated: ${CSV_PATH}`);
 }
 
 async function fetchAndSave() {
   const nowUtc   = new Date();
-  const hh       = String((nowUtc.getUTCHours()+10)%24).padStart(2,"0");
-  const mm       = String(nowUtc.getUTCMinutes()).padStart(2,"0");
-  const timeStr  = `${hh}:${mm}`;
+  const khabHour = (nowUtc.getUTCHours() + 10) % 24;
+  const khabMin  = nowUtc.getUTCMinutes();
+  const timeStr  = `${String(khabHour).padStart(2,"0")}:${String(khabMin).padStart(2,"0")}`;
 
   let browser, page;
   try {
@@ -96,8 +92,12 @@ async function fetchAndSave() {
       throw new Error("Не удалось получить data-count после всех попыток");
     }
 
-    // вместо Telegram — дописываем в CSV
-    appendToCsv(timeStr, count);
+    // Запись в CSV только если время между 07:00 и 23:00 по Хабаровску
+    if (khabHour >= 7 && khabHour < 23) {
+      appendToCsv(timeStr, count);
+    } else {
+      console.log(`[${timeStr}] Вне окна (07–23) — запись в CSV пропущена`);
+    }
 
   } catch (err) {
     console.error(`[${timeStr}] Ошибка: ${err.message}`);
@@ -110,7 +110,6 @@ async function fetchAndSave() {
 }
 
 (async () => {
-  await fetchAndSave();  
-  // каждую 10-ю минуту
-  cron.schedule("*/5 * * * *", fetchAndSave);
+  await fetchAndSave();
+  cron.schedule("*/10 * * * *", fetchAndSave);
 })();
