@@ -1,3 +1,11 @@
+// test.js
+
+// —————————————————————————————————————————
+// Полифилл для crypto.getRandomValues (нужен node-cron)
+const { webcrypto } = require('crypto');
+global.crypto = webcrypto;
+// —————————————————————————————————————————
+
 const puppeteer = require('puppeteer');
 const cron      = require('node-cron');
 const axios     = require('axios');
@@ -11,53 +19,51 @@ const URL          = "https://academyffc.com/raspisanie/";
 const JSON_DB_PATH = path.join(__dirname, "data.json");
 // ================================
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-let browser, page;
+const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 async function initBrowser() {
-  browser = await puppeteer.launch({
+  const browser = await puppeteer.launch({
     headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',  // не грузить /dev/shm
+      '--disable-dev-shm-usage',
       '--single-process',
       '--no-zygote',
-      '--disable-gpu',
-      '--disable-background-timer-throttling'
+      '--disable-gpu'
     ],
     defaultViewport: { width: 800, height: 600 },
   });
-  page = await browser.newPage();
+  const page = await browser.newPage();
   await page.setUserAgent('GymParser/1.0');
+  return { browser, page };
 }
 
 async function fetchAndSend() {
-  // UTC → Хабаровск (UTC+10)
   const nowUtc   = new Date();
   const khabHour = (nowUtc.getUTCHours() + 10) % 24;
   const khabMin  = nowUtc.getUTCMinutes();
   const timeStr  = `${String(khabHour).padStart(2,'0')}:${String(khabMin).padStart(2,'0')}`;
 
+  let browser, page;
   try {
-    console.log(`\n[${timeStr}] Навигация к ${URL}`);
-    await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log(`\n[${timeStr}] Инициализация браузера…`);
+    ({ browser, page } = await initBrowser());
 
-    const frameSelector   = '#personal_widget_frame_v7u';
-    const maxAttempts     = 6;
-    const reloadInterval  = 2;
-    const waitPerAttempt  = 10000;  
+    console.log(`[${timeStr}] Навигация к ${URL}`);
+    await page.goto(URL, { waitUntil: 'networkidle2', timeout: 120000 });
 
-    // дождаться появления iframe
+    const frameSelector  = '#personal_widget_frame_v7u';
+    const maxAttempts    = 6;
+    const reloadInterval = 2;
+    const waitPerAttempt = 10000;
+
     console.log(`[${timeStr}] Ждём iframe ${frameSelector}`);
     await page.waitForSelector(frameSelector, { timeout: 60000 });
-
     let frameHandle = await page.$(frameSelector);
     let frame       = await frameHandle.contentFrame();
     let count       = null;
 
-    // цикл попыток
     for (let i = 1; i <= maxAttempts; i++) {
       console.log(`[${timeStr}] Попытка ${i}/${maxAttempts}: ждём ${waitPerAttempt/1000}s`);
       await sleep(waitPerAttempt);
@@ -71,13 +77,11 @@ async function fetchAndSend() {
         console.log(`[${timeStr}] Получили count = ${count}`);
         break;
       }
-
       console.log(`[${timeStr}] data-count ещё не появился`);
 
-      // каждые reloadInterval попыток — перезагружаем страницу
       if (i % reloadInterval === 0 && i < maxAttempts) {
         console.log(`[${timeStr}] Перезагружаем страницу (после ${i} попыток)`);
-        await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+        await page.reload({ waitUntil: 'networkidle2', timeout: 120000 });
         await page.waitForSelector(frameSelector, { timeout: 60000 });
         frameHandle = await page.$(frameSelector);
         frame       = await frameHandle.contentFrame();
@@ -89,8 +93,6 @@ async function fetchAndSend() {
     }
 
     const msg = `Время : ${timeStr}; Люди: ${count}`;
-
-    // отправка только между 07–23 по Хабаровску
     if (khabHour >= 7 && khabHour < 23) {
       await axios.post(
         `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
@@ -101,7 +103,6 @@ async function fetchAndSend() {
       console.log(`[${timeStr}] Вне окна (07–23) — пропущено`);
     }
 
-    // логируем всегда
     const rec = { time: timeStr, count: +count };
     let data = [];
     try {
@@ -113,12 +114,14 @@ async function fetchAndSend() {
 
   } catch (err) {
     console.error(`[${timeStr}] Ошибка: ${err.message}`);
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
 (async () => {
-  await initBrowser();
+  // Первый замер сразу при старте
   await fetchAndSend();
-  // расписание — каждые 10 минут
-  cron.schedule('*/5 * * * * ', fetchAndSend);
+  // Расписание: каждые 10 минут
+  cron.schedule('*/10 * * * *', fetchAndSend);
 })();
