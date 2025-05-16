@@ -14,7 +14,7 @@ const URL             = "https://academyffc.com/raspisanie/";
 const FRAME_ID        = "personal_widget_frame_v7u";
 const CSV_PATH        = path.join(__dirname, "data.csv");
 const MAX_ATTEMPTS    = 6;
-const RELOAD_INTERVAL = 2;      // после каждой 2-й попытки — перезагрузить
+const RELOAD_INTERVAL = 2;      // перезагружать страницу каждые 2 попытки
 const WAIT_MS         = 10000;  // ждать 10 секунд между попытками
 // ================================
 
@@ -89,10 +89,10 @@ async function fetchAndSave() {
     }
 
     if (!count) {
-      throw new Error("Не удалось получить data-count после всех попыток");
+      console.log(`[${timeStr}] Не удалось получить data-count — пропускаем`);
+      return;
     }
 
-    // Запись в CSV только если время между 07:00 и 23:00 по Хабаровску
     if (khabHour >= 7 && khabHour < 23) {
       appendToCsv(timeStr, count);
     } else {
@@ -110,6 +110,13 @@ async function fetchAndSave() {
 }
 
 (async () => {
+  // первый запуск сразу же
   await fetchAndSave();
-  cron.schedule("0 */10 * * * *", fetchAndSave);
+
+  // далее — в 00-й секунде каждой 10-й минуты по Хабаровскому времени
+  cron.schedule(
+    "0 */10 * * * *",
+    fetchAndSave,
+    { timezone: "Asia/Vladivostok" }
+  );
 })();
