@@ -93,11 +93,8 @@ async function fetchAndSave() {
       return;
     }
 
-    if (khabHour >= 7 && khabHour < 23) {
-      appendToCsv(timeStr, count);
-    } else {
-      console.log(`[${timeStr}] Вне окна (07–23) — запись в CSV пропущена`);
-    }
+    // cron расписан только на 07–22, так что просто сохраняем
+    appendToCsv(timeStr, count);
 
   } catch (err) {
     console.error(`[${timeStr}] Ошибка: ${err.message}`);
@@ -110,12 +107,12 @@ async function fetchAndSave() {
 }
 
 (async () => {
-  // первый запуск сразу же
+  // первый запуск сразу
   await fetchAndSave();
 
-  // далее — в 00-й секунде каждой 10-й минуты по Хабаровскому времени
+  // далее — в 0-й секунде каждой 10-й минуты, только в часы 07…22 по Хабаровску
   cron.schedule(
-    "0 */10 * * * *",
+    "0 */10 7-22 * * *",
     fetchAndSave,
     { timezone: "Asia/Vladivostok" }
   );
